@@ -1,0 +1,973 @@
+//Jerry Meng term project APCS
+//Graphics created by me
+//Music copyrighted Nintendo, used under fair use for education
+//Idea from OneButton's Mr. Jump app
+//Variable height jumping inspired by Shaun Spalding
+//Documentation and examples used: Polygon class, AffineTransform class
+///////////////////////////////////////////////////////////////////////////////
+//  Project Outline
+// ~Create jump and jump mechanics
+// ~Create stage and scroll
+// ~Create stage graphics
+// ~Create fall collision mechanics
+// ~Create side collision mechanics
+// ~Create up collision mechanics
+// ~Create hazard collision mechanics
+// ~Create background graphics
+// ~Create sound and music effects
+// ~Create character graphics
+// ~Create death effects
+// ~Design goal effects
+// ~Design stage
+//
+//  Optional, given time:
+// ~Create start screen
+//  Update and expand stage graphics and powerups
+//  Add level select and levels
+//  Add new effects and mechanics
+//
+//  List of known bugs:
+//  
+///////////////////////////////////////////////////////////////////////////////
+import javax.swing.*;
+import java.util.*;
+import java.awt.*;
+import java.awt.geom.*;
+
+
+class MrJump extends JComponentWithEvents{
+  Random random = new Random();
+  
+  //jump constants
+  private final int JUMP_INITIAL_SPEED = -20;
+  private final int ACCELERATION_GRAVITY = 1;
+  private final long MAX_JUMP_TIME = 300000000;
+  private final int JUMP_INERTIA = 2;
+  
+  //runner properties
+  private final int RUNNER_X = getWidth() / 6;
+  private int runnerY = 100;
+  private final int RUNNER_WIDTH = getWidth() / 22;
+  private final int RUNNER_HEIGHT = getHeight() / 10;
+  
+  //jump speeds and timers
+  private int jumpSpeed = 0;
+  private boolean isOnLand = false;
+  private boolean isJumping = false;
+  private long time0;
+  private long currentTime;
+  
+  //stage
+  private final int STAGE_ROW = 10; 
+  private final int STAGE_COL = 200;
+  private final int GOAL_LOCATION = STAGE_COL-20;
+  private int blockSize = getHeight()/(STAGE_ROW);
+  private int[][] stage = new int[STAGE_ROW][STAGE_COL];
+  private int stageScroll = 0;
+  private int levelPercent = 0; 
+ 
+  //stage constants
+  private final int SCROLL_SPEED = 8;
+  
+  //collisions:
+  //occupy blocks
+  private int occupyTopLeft;
+  private int occupyTopRight;
+  private int occupyBotLeft;
+  private int occupyBotRight;
+  
+  //down collisions:
+  private int feetBlockLeft;
+  private int feetBlockRight;
+  //diagonal
+  private int diagonalBlockDown;
+  
+  //right collisions:
+  private int faceBlockTop;
+  private int faceBlockBot;
+  
+  //up collisions:
+  private int headBlockLeft;
+  private int headBlockRight;
+  //diagonal
+  private int diagonalBlockUp;
+  
+  
+  //block values
+  private final int AIR_BLOCK = 0;
+  private final int NORMAL_BLOCK = 1;
+  private final int GRASS_BLOCK = 2;
+  private final int CLOUD_BLOCK = 3;
+  private final int UP_SPIKE_BLOCK = 4;
+  private final int DOWN_SPIKE_BLOCK = 5;
+  private final int GOAL_BLOCK = 6;
+  //optional additions
+  private final int DOUBLE_JUMP_BLOCK = 7;
+  private final int INFINITE_JUMP_BLOCK = 8;
+  private final int BARRIER_OPEN_BLOCK = 9;
+  private final int VERTICAL_BARRIER_BLOCK = 10;
+  private final int HORIZONTAL_BARRIER_BLOCK = 11;
+  private final int ROCKET_BLOCK = 12;
+  
+  
+  //custom colors
+  private Color brown = new Color (205, 133, 63);
+  private Color lightBlue = new Color (135, 206, 250);
+  private Color darkGray = new Color (30, 30, 30);
+  private Color darkGreen = new Color (0, 215, 0);
+  
+  
+  //block colors, variable to level, to be implemented
+  private Color normalBlockColor = brown;
+  private Color grassColor = darkGreen;
+  private Color spikeColor = darkGray;
+  private Color skyColor = lightBlue;
+  
+  
+  //block properties
+  private final int GRASS_DEPTH = 3;
+  private final int GRASS_EXTEND = 15;
+  
+  //death
+  private boolean gameOver = false;
+  private int deathPaintCounter = 0;
+  
+  //painting Mr. Jump
+  private final int HEAD_DIMENSION = RUNNER_HEIGHT/2;
+  private int headCoordinate = RUNNER_X+(RUNNER_WIDTH-HEAD_DIMENSION)/2;
+  //head bob
+  private int headBob = 0;
+  private int bobCount = 0;
+  private final int BODY_WIDTH = RUNNER_HEIGHT/4;
+  private final int BODY_HEIGHT = RUNNER_WIDTH/3;
+  private final int BODY_COORDINATE = RUNNER_X+(RUNNER_WIDTH-BODY_WIDTH)/2;
+  private Color bodyColor = Color.red; //variable to level; to be implemented
+  private Color skinColor = Color.white; //variable to select; tb implemented
+  
+  //painting background
+  private final int CLOUD_SPEED = -1;
+  private final int CLOUD_WIDTH = getWidth()/4;
+  private final int CLOUD_HEIGHT = blockSize;
+  private int cloudY = random.nextInt(3)*blockSize;
+  private int cloudX = getWidth();
+  private final int CLOUD_ALPHA = 150;
+  private Color cloudColor = new Color(255, 255, 255, CLOUD_ALPHA);
+  private final int[] MOUNTAIN_X = {getWidth()/2, getWidth(), getWidth()*3/4};
+  private final int[] MOUNTAIN_Y = {getHeight(), getHeight(), 4*blockSize};
+  private final int MOUNTAIN_ALPHA = 50;
+  private Color mountainColor = new Color(0, 0, 0, MOUNTAIN_ALPHA);  
+  
+  //rotation
+  private AffineTransform tx = new AffineTransform();
+  
+  //legs
+  private final int LEG_WIDTH = 6;
+  private final int LEG_LENGTH = 15;
+  private final int LEG_X = RUNNER_X + RUNNER_WIDTH/2 - LEG_WIDTH/2;
+  private int legY = runnerY + HEAD_DIMENSION + RUNNER_HEIGHT;
+  private Color legColor = Color.black; //variable to level
+  
+  //arms
+  private final int ARM_WIDTH = 6;
+  private final int ARM_LENGTH = 10;
+  private final int ARM_X = RUNNER_X + RUNNER_WIDTH/2 - LEG_WIDTH/2;
+  private final int ARM_LOCATION = 3; //how far arm is down the body
+  private int armY = runnerY + HEAD_DIMENSION + RUNNER_HEIGHT/ARM_LOCATION;
+  private final double ARM_SHADE = 0.5;
+  private Color armColor = new Color((int)(bodyColor.getRed()*ARM_SHADE),
+                                     (int)(bodyColor.getGreen()*ARM_SHADE),
+                                     (int)(bodyColor.getBlue()*ARM_SHADE));
+
+  
+  //fists
+  private final int FIST_SIZE = 6;
+
+  //rotation angles and direction
+  private final double MAX_ANGLE = 75;
+  private double angle = Math.toRadians(MAX_ANGLE);
+  private boolean angleDirection;
+  private final double ANGLE_SPEED = 0.15;
+  
+  //arms, legs, fists objects
+  private Rectangle leg1 = new Rectangle(LEG_X, legY, LEG_WIDTH, LEG_LENGTH);
+  private Rectangle leg2 = new Rectangle(LEG_X, legY, LEG_WIDTH, LEG_LENGTH);
+  private Rectangle arm1 = new Rectangle(ARM_X, armY, ARM_WIDTH, ARM_LENGTH);
+  private Rectangle arm2 = new Rectangle(ARM_X, armY, ARM_WIDTH, ARM_LENGTH);
+  private Rectangle fist1 = new Rectangle(ARM_X+ARM_WIDTH, 
+                                          armY+ARM_LENGTH-FIST_SIZE,
+                                          FIST_SIZE, FIST_SIZE);
+  private Rectangle fist2 = new Rectangle(ARM_X+ARM_WIDTH, 
+                                          armY+ARM_LENGTH-FIST_SIZE,
+                                          FIST_SIZE, FIST_SIZE);
+         
+  
+  //death animation
+  private final int TOMB_DIMENSION = RUNNER_WIDTH/4;
+  private final int TOMB_HEIGHT_OFFSET = RUNNER_HEIGHT*3/10;
+  private final Color TOMB_COLOR = Color.gray;
+  
+  //goal and win
+  private Color goalColor = Color.yellow;
+  private boolean win = false;
+  
+  //start screen
+  private boolean startScreen = true;
+  private final Color TITLE_COLOR = Color.black;
+  
+  
+  
+  
+  
+  public void start(){
+    setTimerDelay(15);
+    setStage();
+    loop("start.mid");
+    if (!startScreen){//start game when start screen is not showing
+      stopSounds();
+      loop("main.mid");
+      isOnLand = false;
+      jumpSpeed = 0;
+      gameOver = false;
+      win = false;
+      stageScroll = 0;
+      runnerY = 10;
+      deathPaintCounter = 0; //drawing next iteration after death by wall/fall
+    }
+  }
+  
+  public void die(){
+    stopSounds();
+    play("death.mid");
+    gameOver = true;
+  }
+  
+  public void win(){
+    stopSounds();
+    play("win.mid");
+    win = true;
+  }
+  
+  public void reset(){
+    start();
+  }
+ 
+  
+  public void timerFired(){
+    if ((!gameOver || deathPaintCounter < 2) && !win
+        && !startScreen){//paint frame after death
+      stageScroll += SCROLL_SPEED;
+      runnerY += jumpSpeed;
+    }
+    if (!gameOver && !win){ //normal
+      getCoordinates();
+      checkFalling();
+      checkCollision();
+      checkSpikes();
+      checkGoal();
+      getRotationCoordinates();
+      getLevelPercent();
+      checkJumpMaxHeight();
+    }
+    if (gameOver){
+      deathPaintCounter++;
+    }
+    moveCloud();
+  }
+  
+  public void getCoordinates(){
+    getOccupyCoordinates();
+    getDownCoordinates();
+    getUpCoordinates();
+    getSideCoordinates();
+  }
+  public void getOccupyCoordinates(){
+    //blocks occupying  
+    occupyTopLeft = stage[(runnerY / blockSize)] 
+      [(RUNNER_X + stageScroll) / blockSize];
+    occupyTopRight = stage[(runnerY / blockSize)] 
+      [(RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize];
+    occupyBotLeft = stage[((runnerY + RUNNER_HEIGHT) / blockSize)] 
+      [(RUNNER_X + stageScroll) / blockSize];
+    occupyBotRight = stage[((runnerY + RUNNER_HEIGHT) / blockSize)]
+      [(RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize];
+  }
+  
+  public void getDownCoordinates(){
+    if ((runnerY + RUNNER_HEIGHT) / blockSize < STAGE_ROW-1){ //if not bottom
+      //down coordinates
+      feetBlockLeft = stage[((runnerY + RUNNER_HEIGHT) / blockSize + 1)]
+        [(RUNNER_X + stageScroll) / blockSize];
+      feetBlockRight = stage[((runnerY + RUNNER_HEIGHT) / blockSize) + 1]
+        [(RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize];
+      //diagonal down
+      diagonalBlockDown = stage[((runnerY + RUNNER_HEIGHT) / blockSize) + 1]
+        [((RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize)+1];
+    }
+  }
+   
+  public void getUpCoordinates(){
+    //up coordinates
+    if (runnerY / blockSize > 0){ //if not at ceiling
+      headBlockLeft = stage[(runnerY / blockSize) - 1] 
+        [(RUNNER_X + stageScroll) / blockSize];
+      headBlockRight = stage[(runnerY / blockSize) - 1] 
+        [(RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize];
+      //diagonal
+      diagonalBlockUp = stage[(runnerY / blockSize) - 1]
+        [((RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize) + 1];
+    }  
+  }
+   
+  public void getSideCoordinates(){
+    //side coordinates
+    faceBlockTop = stage[(runnerY / blockSize)] 
+      [((RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize) + 1]; 
+    faceBlockBot = stage[((runnerY + RUNNER_HEIGHT) / blockSize)]
+      [((RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize) + 1];
+  }
+  
+  public void checkFalling(){
+    if (!isOnLand){
+      jumpSpeed += ACCELERATION_GRAVITY;
+    }
+  }
+  
+  //collisions
+  public void checkCollision(){
+    checkUpCollision();
+    checkSideCollision();
+    checkLanding();
+    checkDiagonalCollision();
+  }
+  
+  public void checkUpCollision(){
+    if (runnerY / blockSize > 0){
+      if (jumpSpeed < 0 && 
+          //legal pieces for up collision: normal block, grass block
+          (headBlockLeft == NORMAL_BLOCK || headBlockRight == NORMAL_BLOCK ||
+           headBlockLeft == GRASS_BLOCK || headBlockRight == GRASS_BLOCK)){
+        int distance = Math.abs((runnerY / blockSize)*blockSize - (runnerY));
+        if (distance <= Math.abs(jumpSpeed)){
+          jumpSpeed = 0;
+          isJumping = false;
+          runnerY = ((runnerY / blockSize))*blockSize;
+        }
+      }
+    }
+    else{
+      int distance = runnerY;
+      if (distance <= Math.abs(jumpSpeed)){
+        die();
+      }
+    }
+  }
+  
+  public void checkSideCollision(){
+    if (!isOnLand && 
+        //legal pieces for up collision: normal block, grass block, v. barrier
+        (faceBlockTop == NORMAL_BLOCK || faceBlockBot == NORMAL_BLOCK ||
+        faceBlockTop == GRASS_BLOCK || faceBlockBot == GRASS_BLOCK)){
+      int distance = (((RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize)+1)
+                     *blockSize-(RUNNER_X + stageScroll + RUNNER_WIDTH);
+      if (distance <= SCROLL_SPEED){
+        die();
+      }
+    }
+    else if (isOnLand && 
+             (occupyTopRight == NORMAL_BLOCK||occupyTopRight == GRASS_BLOCK)){
+      die();
+    }
+  }
+  
+  public void checkLanding(){
+    if ((runnerY + RUNNER_HEIGHT) / blockSize < STAGE_ROW-1){
+      //if landing on block
+      if (!isOnLand && jumpSpeed > 0 && //only land if falling
+          //legal pieces for land: grass, cloud, horizontal barrier
+          (feetBlockLeft == GRASS_BLOCK || feetBlockRight == GRASS_BLOCK ||
+           feetBlockLeft == CLOUD_BLOCK || feetBlockRight == CLOUD_BLOCK)){
+        int distance = (((runnerY + RUNNER_HEIGHT) / blockSize) + 1)*blockSize-
+          (runnerY + RUNNER_HEIGHT);
+        if (distance <= jumpSpeed){
+          isOnLand = true;
+          jumpSpeed = 0;
+          runnerY = ((runnerY/blockSize)+1) * blockSize; 
+        }
+      }
+      //if walk off ledge
+      else if (isOnLand && jumpSpeed == 0 && 
+               occupyBotLeft == AIR_BLOCK && occupyBotRight == AIR_BLOCK){
+        isOnLand = false;
+      }
+    }
+    else{
+      int distance = STAGE_ROW * blockSize - (runnerY + RUNNER_HEIGHT);
+      if (distance <= jumpSpeed){
+        die();
+      }
+    }
+  }
+
+  public void checkDiagonalCollision(){
+    checkDiagonalDown();
+    checkDiagonalUp();
+  }
+  
+  public void checkDiagonalDown(){
+    //diagonal down
+    if ((runnerY + RUNNER_HEIGHT) / blockSize < STAGE_ROW-1){
+      if (!isOnLand && jumpSpeed > 0 && //only land if falling
+        //legal pieces for land: grass, cloud, horizontal barrier
+        (diagonalBlockDown == GRASS_BLOCK ||
+         diagonalBlockDown == NORMAL_BLOCK)){
+        int xDistanceDown = (((RUNNER_X + RUNNER_WIDTH + stageScroll) 
+          /blockSize)+1)
+          *blockSize-(RUNNER_X + stageScroll + RUNNER_WIDTH);
+        int yDistanceDown = (((runnerY + RUNNER_HEIGHT) / blockSize) + 1)
+          *blockSize 
+          -(runnerY + RUNNER_HEIGHT);
+        if (xDistanceDown <= SCROLL_SPEED && yDistanceDown <= jumpSpeed){
+          die();
+        }
+      }
+    }
+  }
+  
+  public void checkDiagonalUp(){
+    //diagonal up
+    if (runnerY / blockSize > 0){
+      if (jumpSpeed < 0 && 
+          //legal pieces for up collision: normal block, grass block
+          (diagonalBlockUp == NORMAL_BLOCK || 
+           diagonalBlockUp == GRASS_BLOCK)){
+        int xDistanceUp = (((RUNNER_X + RUNNER_WIDTH + stageScroll) 
+          /blockSize)+1)
+          *blockSize-(RUNNER_X + stageScroll + RUNNER_WIDTH);
+        int yDistanceUp = Math.abs((runnerY/blockSize)*blockSize - (runnerY));
+        if (xDistanceUp <= SCROLL_SPEED && yDistanceUp <= Math.abs(jumpSpeed)){
+          die();
+        }
+      }
+    }
+  }
+  
+  
+  //spikes collision
+  public void checkSpikes(){
+    checkSpikeBot();
+    checkSpikeTop();
+  }
+  public void checkSpikeBot(){
+    checkSpikeBotLeft();
+    checkSpikeBotRight();
+  }
+  
+  public void checkSpikeBotLeft(){
+    if (occupyBotLeft==UP_SPIKE_BLOCK||occupyBotLeft==DOWN_SPIKE_BLOCK){
+      int row = (runnerY + RUNNER_HEIGHT) / blockSize;
+      int col = (RUNNER_X + stageScroll) / blockSize;
+      if (occupyBotLeft==UP_SPIKE_BLOCK){
+        if (makeTriangle(row, col, 1).intersects(RUNNER_X, runnerY, 
+            RUNNER_WIDTH, RUNNER_HEIGHT)){
+          die();
+        }
+      }
+      else if (makeTriangle(row, col, 0).intersects(RUNNER_X, runnerY, 
+               RUNNER_WIDTH, RUNNER_HEIGHT)){
+        die();
+      }
+    }
+  }
+  
+  public void checkSpikeBotRight(){
+    if (occupyBotRight==UP_SPIKE_BLOCK||occupyBotRight==DOWN_SPIKE_BLOCK){
+      int row = (runnerY + RUNNER_HEIGHT) / blockSize;
+      int col = (RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize;
+      if (occupyBotRight==UP_SPIKE_BLOCK){
+        if (makeTriangle(row, col, 1).intersects(RUNNER_X, runnerY, 
+            RUNNER_WIDTH, RUNNER_HEIGHT)){
+          die();
+        }
+      }
+      else if (makeTriangle(row, col, 0).intersects(RUNNER_X, runnerY, 
+               RUNNER_WIDTH, RUNNER_HEIGHT)){
+        die();
+      }
+    }
+  }
+  
+  public void checkSpikeTop(){
+    checkSpikeTopLeft();
+    checkSpikeTopRight();
+  }
+  
+  public void checkSpikeTopLeft(){
+    if (occupyTopLeft==UP_SPIKE_BLOCK||occupyTopLeft==DOWN_SPIKE_BLOCK){
+      int row = (runnerY) / blockSize;
+      int col = (RUNNER_X + stageScroll) / blockSize;
+      if (occupyTopLeft==UP_SPIKE_BLOCK){
+        if (makeTriangle(row, col, 1).intersects(RUNNER_X, runnerY, 
+            RUNNER_WIDTH, RUNNER_HEIGHT)){
+          die();
+        }
+      }
+      else if (makeTriangle(row, col, 0).intersects(RUNNER_X, runnerY, 
+               RUNNER_WIDTH, RUNNER_HEIGHT)){
+        die();
+      }
+    }
+  }
+  
+  public void checkSpikeTopRight(){
+    if (occupyTopRight==UP_SPIKE_BLOCK||occupyTopRight==DOWN_SPIKE_BLOCK){
+      int row = (runnerY) / blockSize;
+      int col = (RUNNER_X + RUNNER_WIDTH + stageScroll) / blockSize;
+      if (occupyTopRight==UP_SPIKE_BLOCK){
+        if (makeTriangle(row, col, 1).intersects(RUNNER_X, runnerY, 
+            RUNNER_WIDTH, RUNNER_HEIGHT)){
+          die();
+        }
+      }
+      else if (makeTriangle(row, col, 0).intersects(RUNNER_X, runnerY, 
+               RUNNER_WIDTH, RUNNER_HEIGHT)){
+        die();
+      }
+    }
+  }
+  
+  
+  public void checkGoal(){
+    if (occupyTopLeft == GOAL_BLOCK || occupyTopRight == GOAL_BLOCK ||
+        occupyBotLeft == GOAL_BLOCK || occupyBotRight == GOAL_BLOCK){
+      win();
+    }
+  }
+  
+  public void getRotationCoordinates(){
+    getAngles();
+    updateObjects();
+  }
+  
+  public void getAngles(){
+    if (Math.toDegrees(angle) >= MAX_ANGLE){
+      angleDirection = true;
+      bobCount = 0;
+    }
+    else if (Math.toDegrees(angle) <= -MAX_ANGLE){
+      angleDirection = false;
+      bobCount = 0;
+    }
+    if (angleDirection == false){
+      angle+= ANGLE_SPEED;
+      bobCount ++;
+      if (bobCount >= 10){
+        headCoordinate --;
+        headBob --;
+        bobCount = 0;
+      }
+    }
+    else{
+      angle-= ANGLE_SPEED;
+      bobCount ++;
+      if (bobCount >= 10){
+        headCoordinate ++;
+        headBob ++;
+        bobCount = 0;
+      }
+    }
+  }
+  
+  public void updateObjects(){
+    legY = runnerY + HEAD_DIMENSION + BODY_HEIGHT;
+    armY = runnerY + HEAD_DIMENSION + BODY_HEIGHT/ARM_LOCATION;
+    leg1 = new Rectangle(LEG_X, legY, LEG_WIDTH, LEG_LENGTH);
+    leg2 = new Rectangle(LEG_X, legY, LEG_WIDTH, LEG_LENGTH);
+    arm1 = new Rectangle(ARM_X, armY, ARM_WIDTH, ARM_LENGTH);
+    arm2 = new Rectangle(ARM_X, armY, ARM_WIDTH, ARM_LENGTH);
+    fist1 = new Rectangle(ARM_X+ARM_WIDTH, armY+ARM_LENGTH-FIST_SIZE,
+                                  FIST_SIZE, FIST_SIZE);
+    fist2 = new Rectangle(ARM_X+ARM_WIDTH, armY+ARM_LENGTH-FIST_SIZE,
+                                  FIST_SIZE, FIST_SIZE);
+  }
+  
+  public void getLevelPercent(){
+    levelPercent = (int)(100*((double)(stageScroll+RUNNER_X)/
+                              ((GOAL_LOCATION)*blockSize))+1);
+    if (levelPercent > 100){ //die if past goal
+      die();
+    }
+  }
+  
+  
+  
+  public void checkJumpMaxHeight(){
+    if (isJumping){
+      currentTime = System.nanoTime();
+      if (currentTime - time0 >= MAX_JUMP_TIME){
+        isJumping = false;
+      }
+    }
+  }
+  
+  public void moveCloud(){
+    cloudX += CLOUD_SPEED;
+    if (cloudX + CLOUD_WIDTH < 0){
+      cloudX = getWidth();
+      cloudY = random.nextInt(3)*blockSize;
+    }
+  }
+  
+  
+  
+  public void keyPressed(char key){
+    if (startScreen){
+      startScreen = false;
+      start();
+    }
+    if ((gameOver || win)&& key == 'r'){
+      start();
+    }
+    if (isOnLand){
+      isJumping = true;
+      time0 = System.nanoTime();
+      jump();
+    }
+  }
+  
+  
+  public void jump(){
+    jumpSpeed = JUMP_INITIAL_SPEED;
+    isOnLand = false;
+  }
+    
+    
+  //variable height jumping
+  public void keyReleased(char key){
+    if (isJumping){
+      jumpSpeed = jumpSpeed/JUMP_INERTIA;
+      isJumping = false;
+    }
+  }
+  
+  //upOrDown: if up spike, 1, if down, 0
+  public Polygon makeTriangle(int row, int col, int upOrDown){
+    if (upOrDown==1){
+      int x[] = {col*blockSize-stageScroll, (col+1)*blockSize-stageScroll,
+                 col*blockSize+(blockSize/2)-stageScroll};
+      int y[] = {(row+1)*blockSize, (row+1)*blockSize, row*blockSize};
+      int n = 3;
+      return new Polygon(x, y, n);
+    }
+    else{
+      int x[] = {col*blockSize-stageScroll, (col+1)*blockSize-stageScroll,
+                 col*blockSize+(blockSize/2)-stageScroll};
+      int y[] = {row*blockSize, row*blockSize, (row+1)*blockSize};
+      int n = 3;
+      return new Polygon(x, y, n);
+    }
+  }
+  
+  public Polygon makeDiamond(int row, int col){
+    int x[] = {col*blockSize-stageScroll, 
+      col*blockSize-stageScroll+(blockSize/2),
+      (col+1)*blockSize-stageScroll,
+      col*blockSize-stageScroll+(blockSize/2),};
+    int y[] = {row*blockSize+(blockSize/2), 
+      row*blockSize,
+      row*blockSize+(blockSize/2),
+      (row+1)*blockSize,};
+    int n = 4;
+    return new Polygon (x, y, n);
+  }
+  
+  
+  //paints and paint-related
+  public void paint (Graphics2D page){
+    if (startScreen){
+      paintStart(page);
+    }
+    else{
+      paintBackground(page);
+      paintCloud(page);
+      paintMountain(page);
+      paintStage(page);
+      paintLevelPercent(page);
+      paintCharacter(page);
+    }
+  }
+  
+  public void paintStart(Graphics2D page){
+    paintBackground(page);
+    paintCloud(page);
+    paintMountain(page);
+    paintStage(page);
+    page.setColor(TITLE_COLOR);
+    page.setFont(new Font("Serif", Font.BOLD + Font.ITALIC, 96));
+    drawCenteredString(page, "Mr. Jump", 0, 0, getWidth(), getHeight()/2);
+    page.setFont(new Font("Serif", Font.BOLD + Font.ITALIC, 32));
+    drawCenteredString(page, "Press any key to start", 
+                       0, 0, getWidth(), getHeight()*2/3);
+  }
+    
+  public void paintBackground (Graphics2D page){
+    page.setColor(skyColor);
+    page.fillRect(0, 0, getWidth(), getHeight());
+  }
+    
+  public void paintCloud(Graphics2D page){
+    page.setColor(cloudColor);
+    page.fillRect(cloudX, cloudY, CLOUD_WIDTH, CLOUD_HEIGHT);
+  }
+    
+ 
+  public void paintMountain(Graphics2D page){
+    page.setColor(mountainColor);
+    page.fillPolygon(MOUNTAIN_X, MOUNTAIN_Y, 3);
+  }
+    
+  public void paintStage(Graphics2D page){
+    for (int row = 0; row < STAGE_ROW; row ++){
+      for (int col = (stageScroll/blockSize); //start at where screen shows
+           col <= (stageScroll/blockSize)+(getWidth()/blockSize)+1; col ++){
+        paintCell(page, row, col);
+      }
+    }
+  }
+  
+  public void paintCell(Graphics2D page, int row, int col){
+    switch (stage[row][col]){
+      case 1: //normal block
+        paintNormalBlock(page, row, col);
+        break;
+      case 2: //grass block
+        paintGrassBlock(page, row, col);
+        break;
+      case 3: //cloud block
+        paintCloudBlock(page, row, col);
+        break;
+      case 4: //up-spike
+        paintUpSpikeBlock(page, row, col);
+        break;
+      case 5: //down-spike
+        paintDownSpikeBlock(page, row, col);
+        break;
+      case 6: //goal 
+        paintGoalBlock(page, row, col);
+        break;
+        
+    }
+  }
+  
+  public void paintNormalBlock(Graphics2D page, int row, int col){
+    page.setColor(normalBlockColor);
+    page.fillRect(col*blockSize-stageScroll, row*blockSize, 
+                  blockSize, blockSize);
+  }
+  
+  public void paintGrassBlock(Graphics2D page, int row, int col){
+    page.setColor(normalBlockColor);
+    page.fillRect(col*blockSize-stageScroll, row*blockSize, 
+                  blockSize, blockSize);
+    page.setColor(grassColor);
+    page.fillRect(col*blockSize-stageScroll, row*blockSize,
+                  blockSize, blockSize/GRASS_DEPTH);
+    //left oval
+    page.fillOval(col*blockSize-stageScroll-(blockSize/GRASS_EXTEND),
+                  row*blockSize, 
+                  2*blockSize/GRASS_EXTEND, blockSize/GRASS_DEPTH);
+    //right oval
+    page.fillOval((col+1)*blockSize-stageScroll-(blockSize/GRASS_EXTEND),
+                  row*blockSize, 
+                  2*blockSize/GRASS_EXTEND, blockSize/GRASS_DEPTH);
+  }
+  
+  public void paintCloudBlock(Graphics2D page, int row, int col){
+    page.setColor(grassColor);
+    page.fillRect(col*blockSize-stageScroll, row*blockSize,
+                  blockSize, blockSize/GRASS_DEPTH);
+    //left oval
+    page.fillOval(col*blockSize-stageScroll-(blockSize/GRASS_EXTEND),
+                  row*blockSize, 
+                  2*blockSize/GRASS_EXTEND, blockSize/GRASS_DEPTH);
+    //right oval
+    page.fillOval((col+1)*blockSize-stageScroll-(blockSize/GRASS_EXTEND),
+                  row*blockSize, 
+                  2*blockSize/GRASS_EXTEND, blockSize/GRASS_DEPTH);
+  }
+  
+  public void paintUpSpikeBlock(Graphics2D page, int row, int col){
+    page.setColor(spikeColor);
+    page.fillPolygon(makeTriangle(row, col, 1));
+  }
+  
+  public void paintDownSpikeBlock(Graphics2D page, int row, int col){
+    page.setColor(spikeColor);
+    page.fillPolygon(makeTriangle(row, col, 0));
+  }
+  
+  public void paintGoalBlock(Graphics2D page, int row, int col){
+    page.setColor(goalColor);
+    page.fillPolygon(makeDiamond(row, col));
+  }
+    
+  public void paintLevelPercent(Graphics2D page){
+    page.setColor(Color.black);
+    page.setFont(new Font("Serif", Font.BOLD, 16));
+    page.drawString("Level Percentage: " + levelPercent+"%",10, 30);
+  }
+    
+  public void paintCharacter(Graphics2D page){
+    if (!gameOver && !win){
+      paintRunner(page);
+    }
+    else if (gameOver){
+      paintDead(page);
+    }
+    else if (win){
+      page.setColor(Color.black);
+      page.setFont(new Font("Serif", Font.BOLD, 48));
+      drawCenteredString(page, "You win! Press \"r\" to replay", 
+                         0, 0, getWidth(), getHeight()/2);
+    }
+    
+  }
+  
+  public void paintRunner(Graphics2D page){
+    paintLegs(page);
+    paintArm1(page);
+    paintBody(page);
+    paintArm2(page);
+    paintFists(page);
+    paintFace(page);
+  }
+  
+  public void paintBody(Graphics2D page){
+    page.setColor(bodyColor);
+    page.fillRect(BODY_COORDINATE, runnerY+HEAD_DIMENSION,
+                  BODY_WIDTH,BODY_HEIGHT);
+  }
+  
+  public void paintFace(Graphics2D page){
+    page.setColor(skinColor); 
+    page.fillRect(headCoordinate, runnerY+headBob, 
+                  HEAD_DIMENSION, HEAD_DIMENSION);
+  }
+  
+  public void paintLegs(Graphics2D page){
+    page.setColor(legColor);
+    tx.setToIdentity();
+    tx.rotate(angle, LEG_X+leg1.width/2, legY);
+    page.fill(tx.createTransformedShape(leg1));
+    tx.setToIdentity();
+    tx.rotate(-angle, LEG_X+leg2.width/2, legY);
+    page.fill(tx.createTransformedShape(leg2));
+  }
+  
+  public void paintArm1(Graphics2D page){
+    page.setColor(armColor);
+    tx.setToIdentity();
+    tx.rotate(angle, ARM_X+arm1.width/2, armY);
+    page.fill(tx.createTransformedShape(arm1));
+  }
+  
+  public void paintArm2(Graphics2D page){
+    page.setColor(armColor);
+    tx.setToIdentity();
+    tx.rotate(-angle, ARM_X+arm2.width/2, armY);
+    page.fill(tx.createTransformedShape(arm2));
+  }
+  
+  public void paintFists(Graphics2D page){  
+    page.setColor(skinColor);
+    tx.setToIdentity();
+    tx.rotate(angle, ARM_X+arm1.width/2, armY);
+    page.fill(tx.createTransformedShape(fist1));
+    tx.setToIdentity();
+    tx.rotate(-angle, ARM_X+arm2.width/2, armY);
+    page.fill(tx.createTransformedShape(fist2));
+  }
+    
+  public void paintDead(Graphics2D page){
+    page.setColor(TOMB_COLOR);
+    //vertical
+    page.fillRect((RUNNER_WIDTH-TOMB_DIMENSION)/2 + RUNNER_X, runnerY, 
+                  TOMB_DIMENSION, RUNNER_HEIGHT);
+    //horizontal
+    page.fillRect(RUNNER_X, TOMB_HEIGHT_OFFSET + runnerY, 
+                  RUNNER_WIDTH, TOMB_DIMENSION);
+    page.setColor(Color.black);
+    page.setFont(new Font("Serif", Font.BOLD, 48));
+    drawCenteredString(page, "Press \"r\" to restart", 
+                       0, 0, getWidth(), getHeight()/2);
+             
+  }
+    
+ 
+  
+  
+  
+  
+  public static void main (String[] args) { launch(900,600); }
+  
+
+  
+  
+   /*Stage block numbers
+   * 0: air
+   * 1: normal block
+   * 2: grass block
+   * 3: cloud block
+   * 4: up-spike
+   * 5: down-spike
+   * 6: goal block
+   */
+  
+  public void setStage(){
+    for (int col = 0; col < STAGE_COL; col ++){ //land
+      stage[8][col] = GRASS_BLOCK;
+      stage[9][col] = NORMAL_BLOCK;
+    }
+    
+    for (int col = 10; col < STAGE_COL; col += 13){ //spikes
+      stage[7][col] = UP_SPIKE_BLOCK;
+    }
+    
+    
+    for (int col = 10; col < STAGE_COL; col += 30){ //clouds
+      stage[5][col] = CLOUD_BLOCK;
+      stage[5][col+1] = CLOUD_BLOCK;
+    }
+    
+    
+    for (int col = 16; col < STAGE_COL; col += 16){ //gaps
+      for (int row = 7; row < 10; row ++){
+        stage[row][col] = AIR_BLOCK;
+        stage[row][col+1] = AIR_BLOCK;
+        stage[row][col+2] = AIR_BLOCK;
+      }
+    }
+    
+    
+    for (int col = 24; col < STAGE_COL; col += 48){ //head blocks and spikes
+      for (int row = 0; row < 4; row ++){
+        stage[row][col] = NORMAL_BLOCK;
+        stage[row][col+1] = NORMAL_BLOCK;
+        stage[row][col+2] = NORMAL_BLOCK;
+      }
+      stage[4][col] = DOWN_SPIKE_BLOCK;
+      stage[4][col+2] = DOWN_SPIKE_BLOCK;
+    }
+    
+    stage[6][GOAL_LOCATION] = GOAL_BLOCK; //goal
+    
+    //fill with air for stage after goal
+    for (int col = GOAL_LOCATION+1; col < STAGE_COL; col++){
+      for (int row = 0; row < STAGE_ROW; row++){
+        stage[row][col] = AIR_BLOCK;
+      }
+    }
+    
+    
+  }
+  
+}
